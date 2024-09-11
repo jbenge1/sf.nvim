@@ -46,7 +46,12 @@ end
 H.orgs = {}
 
 H.authorize_an_org = function(name)
-	local cmd = B:new():cmd("org"):act("login web"):addParams({ ["--alias"] = name }):localOnly():build()
+	local cmd = B:new()
+		:cmd("org")
+		:act("login web")
+		:addParams({ ["--alias"] = name, ["--set-default"] = "" })
+		:localOnly()
+		:build()
 	local err_msg = "Command failed: " .. cmd
 	U.job_call(cmd, nil, err_msg)
 end
