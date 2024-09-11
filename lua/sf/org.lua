@@ -46,7 +46,9 @@ end
 H.orgs = {}
 
 H.authorize_an_org = function(name)
-	print("name: " .. name)
+	local cmd = B:new():cmd("org"):act("login web"):addParams({ ["--alias"] = name }):build()
+	local err_msg = "Command failed: " .. cmd
+	U.job_call(cmd, nil, err_msg)
 end
 
 H.auth_org = function(name)
