@@ -4,20 +4,19 @@
 --- MIT License Copyright (c) 2024 Xi Xiao
 ---
 
-local Util = require('sf.util')
-local Term = require('sf.term')
-local Org = require('sf.org')
-local Metadata = require('sf.md')
-local Test = require('sf.test')
-local Ctags = require('sf.ctags')
+local Util = require("sf.util")
+local Term = require("sf.term")
+local Org = require("sf.org")
+local Metadata = require("sf.md")
+local Test = require("sf.test")
+local Ctags = require("sf.ctags")
 local Sf = {}
 
 --- Before using this plugin, it's mandatory to invoke this function by "require'sf'.setup()".
 ---@param opt table|nil Optional config table to overwrite default settings.
 Sf.setup = function(opt)
-  require('sf.config').setup(opt)
+	require("sf.config").setup(opt)
 end
-
 
 --- get the value of the plugin internal variable "target_org".
 --- "target_org" is automatically set by |Sf.fetch_org_list| when Nvim is intitiated
@@ -75,7 +74,7 @@ Sf.go_to_sf_root = Term.go_to_sf_root
 Sf.run = Term.run
 
 -- From Org module ==========================================================
-
+Sf.auth_org = Org.auth_org
 --- Run "sf org list" command under the hood and stores the org list.
 --- If a target_org is found, the value is saved into "require('sf.util').target_org", an internal variable.
 Sf.fetch_org_list = Org.fetch_org_list
@@ -173,6 +172,5 @@ Sf.create_ctags = Ctags.create
 --- Create tags file in the root path and list them by fzf plugin.
 --- When fzf is not found, the command exists with an error msg.
 Sf.create_and_list_ctags = Ctags.create_and_list
-
 
 return Sf
