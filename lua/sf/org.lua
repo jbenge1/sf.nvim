@@ -42,6 +42,10 @@ function Org.pull_log()
   H.pull_log()
 end
 
+function Org.auth_org()
+  H.auth_org()
+end
+
 -- helpers;
 
 H.pull_log = function()
@@ -123,6 +127,103 @@ H.pull_log = function()
 end
 
 H.orgs = {}
+
+H.get_project_login_url = function()
+  local sf_root = U.get_sf_root()
+  if not sf_root then
+    return nil
+  end
+
+  local project_file = sf_root .. "/sfdx-project.json"
+  if vim.fn.filereadable(project_file) == 0 then
+    return nil
+  end
+
+  local content = vim.fn.readfile(project_file)
+  local json_str = table.concat(content, "\n")
+  local ok, project_config = pcall(vim.json.decode, json_str)
+
+  if ok and project_config and project_config.sfdcLoginUrl then
+    return project_config.sfdcLoginUrl
+  end
+
+  return nil
+end
+
+H.authorize_an_org = function(name, instance_url)
+  local cmd_builder =
+    B:new():cmd("org"):act("login web"):addParams({ ["--alias"] = name, ["--set-default"] = "" }):localOnly()
+
+  if instance_url then
+    cmd_builder:addParams("-r", instance_url)
+  end
+
+  local cmd = cmd_builder:build()
+  local msg = "Opening browser to authenticate org: " .. name
+  local err_msg = "Authentication failed for: " .. name
+  U.job_call(cmd, msg, err_msg)
+end
+
+H.continue_auth_with_alias = function(instance_url)
+  vim.ui.input({ prompt = "Enter Org Alias: " }, function(alias)
+    if alias == nil or alias == "" then
+      return U.show_warn("Alias is required")
+    end
+    H.authorize_an_org(alias, instance_url)
+  end)
+end
+
+H.auth_org = function()
+  local project_login_url = H.get_project_login_url()
+  local options = {}
+
+  -- Add project default as first option if it exists
+  if project_login_url then
+    table.insert(options, "Project Default (" .. project_login_url .. ")")
+  end
+
+  table.insert(options, "Production (login.salesforce.com)")
+  table.insert(options, "Sandbox (test.salesforce.com)")
+  table.insert(options, "Custom URL")
+
+  vim.ui.select(options, {
+    prompt = "Select Salesforce org type:",
+    format_item = function(item)
+      return "  " .. item
+    end,
+  }, function(choice)
+    if choice == nil then
+      return
+    end
+
+    if choice:match("Project Default") then
+      H.continue_auth_with_alias(project_login_url)
+    elseif choice:match("Sandbox") then
+      H.continue_auth_with_alias("https://test.salesforce.com")
+    elseif choice:match("Custom") then
+      vim.ui.input({
+        prompt = "Enter instance URL (empty for project default): ",
+        default = "https://",
+      }, function(url)
+        -- If empty and project default exists, use it
+        if (url == nil or url == "" or url == "https://") and project_login_url then
+          H.continue_auth_with_alias(project_login_url)
+        elseif url == nil or url == "" or url == "https://" then
+          return U.show_warn("URL is required")
+        else
+          -- Validate URL format
+          if not url:match("^https?://") then
+            return U.show_err("URL must start with http:// or https://")
+          end
+          H.continue_auth_with_alias(url)
+        end
+      end)
+    else
+      -- Production - no instance URL needed (uses default)
+      H.continue_auth_with_alias(nil)
+    end
+  end)
+end
 
 H.clean_org_cache = function()
   H.orgs = {}

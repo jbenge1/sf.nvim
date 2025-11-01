@@ -66,6 +66,8 @@ M.sub_cmd_tbl = {
       open = Sf.org_open,
       openCurrentFile = Sf.org_open_current_file,
       pullLog = Sf.pull_log,
+      auth = Sf.auth_org,
+      authOrg = Sf.auth_org,
     },
     impl = common_impl,
     complete = function(subcmd_arg_lead)
