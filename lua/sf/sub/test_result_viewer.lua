@@ -1,400 +1,349 @@
-local T = require("sf.term")
-local B = require("sf.sub.cmd_builder")
-local TS = require("sf.ts")
 local U = require("sf.util")
-local S = require("sf.sub.test_sign")
-
-local H = {}
-local P = {}
-local Test = {}
-
-Test.is_sign_enabled = S.is_enabled
-Test.refresh_and_place_sign = S.refresh_and_place
-Test.setup_sign = S.setup
-Test.toggle_sign = S.toggle
-Test.uncovered_jump_forward = S.uncovered_jump_forward
-Test.uncovered_jump_backward = S.uncovered_jump_backward
-Test.refresh_current_file_covered_percent = S.refresh_current_file_covered_percent
-Test.covered_percent = function()
-  return S.covered_percent
-end
-
-Test.open = function()
-  P.open()
-end
-
-Test.run_current_test_with_coverage = function()
-  local ok_class, test_class_name = pcall(H.validateInTestClass)
-  if not ok_class then
-    return
-  end
-
-  local ok_method, test_name = pcall(H.validateInTestMethod)
-  if not ok_method then
-    return
-  end
-
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-t"] = test_class_name .. "." .. test_name,
-      ["-r"] = "human",
-      ["-w"] = vim.g.sf.sf_wait_time,
-      ["-c"] = "",
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd, H.save_test_coverage_locally)
-end
-
----@param cb function
----@return nil
-Test.run_current_test = function()
-  local ok_class, test_class_name = pcall(H.validateInTestClass)
-  if not ok_class then
-    return
-  end
-
-  local ok_method, test_name = pcall(H.validateInTestMethod)
-  if not ok_method then
-    return
-  end
-
-  -- local cmd = string.format("sf apex run test --tests %s.%s -r human -w 5 %s-o %s", test_class_name, test_name, extraParams, U.get())
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-t"] = test_class_name .. "." .. test_name,
-      ["-r"] = "human",
-      ["-w"] = vim.g.sf.sf_wait_time,
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd)
-end
-
-Test.run_all_tests_in_this_file_with_coverage = function()
-  local ok_class, test_class_name = pcall(H.validateInTestClass)
-  if not ok_class then
-    return
-  end
-
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-n"] = test_class_name,
-      ["-r"] = "human",
-      ["-w"] = vim.g.sf.sf_wait_time,
-      ["-c"] = "",
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd, H.save_test_coverage_locally)
-end
-
----@param cb function
----@return nil
-Test.run_all_tests_in_this_file = function(cb)
-  local ok_class, test_class_name = pcall(H.validateInTestClass)
-  if not ok_class then
-    return
-  end
-
-  -- local cmd = string.format("sf apex run test --class-names %s -r human -w 5 %s-o %s", test_class_name, extraParams, U.get())
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-n"] = test_class_name,
-      ["-r"] = "human",
-      ["-w"] = vim.g.sf.sf_wait_time,
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd, cb)
-end
-
-Test.repeat_last_tests = function()
-  if U.is_empty_str(U.last_tests) then
-    return U.show_warn("Last test command is empty.")
-  end
-
-  T.run(U.last_tests)
-end
-
-Test.run_local_tests = function()
-  -- local cmd = string.format("sf apex run test --test-level RunLocalTests --code-coverage -r human --wait 180 -o %s", U.get())
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-l"] = "RunLocalTests",
-      ["-c"] = "",
-      ["-r"] = "human",
-      ["-w"] = 180,
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd)
-end
-
-Test.run_all_jests = function()
-  T.run("npm run test:unit:coverage")
-end
-
-Test.run_jest_file = function()
-  if vim.fn.expand("%"):match("(.*)%.test%.js$") == nil then
-    vim.notify("Not in a jest test file", vim.log.levels.ERROR)
-    return
-  end
-  T.run(string.format("npm run test:unit -- -- %s", vim.fn.expand("%")))
-end
-
--- helper;
-
-H.validateInTestClass = function()
-  local test_class_name = TS.get_test_class_name()
-  if U.is_empty_str(test_class_name) then
-    U.notify_then_error("Not in a test class.")
-  end
-
-  return test_class_name
-end
-
-H.validateInTestMethod = function()
-  local test_name = TS.get_current_test_method_name()
-  if U.is_empty_str(test_name) then
-    U.notify_then_error("Cursor not in a test method.")
-  end
-
-  return test_name
-end
-
----@param lines table
----@return any
-H.extract_test_run_id = function(lines)
-  for _, line in ipairs(lines) do
-    if string.find(line, "Test Run Id") then
-      return string.match(line, "Test Run Id%s*(%w+)")
-    end
-  end
-  return nil
-end
-
----@param self table
----@param cmd string
----@param exit_code number
-H.save_test_coverage_locally = function(self, cmd, exit_code)
-  U.create_plugin_folder_if_not_exist()
-
-  local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
-  local id = H.extract_test_run_id(lines)
-  if id == nil then
-    return
-  end
-
-  local file_name = "test_result.json"
-  -- local cmd = 'sf apex get test -i ' .. id .. ' -c --json > ' .. U.get_plugin_folder_path() .. file_name
-  local cmd = B:new():cmd("apex"):act("get test"):addParams("-i", id):addParams("-c"):addParams("--json"):build()
-  cmd = cmd .. " > " .. U.get_plugin_folder_path() .. file_name
-
-  U.silent_job_call(cmd, "Code coverage saved.", "Code coverage save failed! " .. cmd, S.invalidate_cache_and_try_place)
-end
-
--- prompt below
-
 local api = vim.api
-local buftype = "nowrite"
-local filetype = "sf_test_prompt"
 
-P.buf = nil
-P.win = nil
-P.class = nil
-P.tests = nil
-P.test_num = nil
-P.selected_tests = {}
+local M = {}
+local H = {}
 
-P.open = function()
-  local class = TS.get_test_class_name()
-  if U.is_empty_str(class) then
-    U.notify_then_error("Not an Apex test class.")
+-- Buffer and window state
+local result_buf = nil
+local result_win = nil
+
+---Parse test result JSON and extract useful information
+---@param test_result table The decoded JSON test result
+---@return table Parsed test summary
+H.parse_test_result = function(test_result)
+  local summary = {
+    total = 0,
+    passed = 0,
+    failed = 0,
+    skipped = 0,
+    failures = {},
+    time = 0,
+  }
+
+  -- Navigate to the actual test results in the JSON structure
+  local tests = vim.tbl_get(test_result, "result", "tests")
+  if not tests then
+    return summary
   end
 
-  local test_names = TS.get_test_method_names_in_curr_file()
-  if vim.tbl_isempty(test_names) then
-    U.show("no Apex test found.")
+  for _, test in ipairs(tests) do
+    summary.total = summary.total + 1
+
+    local outcome = test.Outcome or test.outcome
+    if outcome == "Pass" then
+      summary.passed = summary.passed + 1
+    elseif outcome == "Fail" then
+      summary.failed = summary.failed + 1
+      table.insert(summary.failures, {
+        class = test.ApexClass and test.ApexClass.Name or test.FullName:match("(.+)%."),
+        method = test.MethodName,
+        message = test.Message,
+        stackTrace = test.StackTrace,
+        time = test.RunTime or 0,
+      })
+    elseif outcome == "Skip" then
+      summary.skipped = summary.skipped + 1
+    end
+
+    summary.time = summary.time + (test.RunTime or 0)
   end
 
-  local tests = {}
-  local test_num = 0
-  for _, name in ipairs(test_names) do
-    table.insert(tests, name)
-    test_num = test_num + 1
+  return summary
+end
+
+---Format the test results into display lines
+---@param summary table Parsed test summary
+---@return table Lines to display
+H.format_results = function(summary)
+  local lines = {}
+
+  -- Header
+  table.insert(
+    lines,
+    "╔════════════════════════════════════════════════════════════╗"
+  )
+  table.insert(lines, "║                    TEST RESULTS SUMMARY                    ║")
+  table.insert(
+    lines,
+    "╚════════════════════════════════════════════════════════════╝"
+  )
+  table.insert(lines, "")
+
+  -- Summary stats
+  local status_icon = summary.failed == 0 and "✓" or "✗"
+  local status_text = summary.failed == 0 and "ALL TESTS PASSED" or "TESTS FAILED"
+
+  table.insert(lines, string.format("  %s  %s", status_icon, status_text))
+  table.insert(lines, "")
+  table.insert(lines, string.format("  Total:   %d tests", summary.total))
+  table.insert(lines, string.format("  ✓ Passed: %d", summary.passed))
+
+  if summary.failed > 0 then
+    table.insert(lines, string.format("  ✗ Failed: %d", summary.failed))
   end
 
-  P.class = class
-  P.tests = tests
-  P.test_num = test_num
+  if summary.skipped > 0 then
+    table.insert(lines, string.format("  ⊘ Skipped: %d", summary.skipped))
+  end
 
-  local buf = P.use_existing_or_create_buf()
-  local win = P.use_existing_or_create_win()
-  P.buf = buf
-  P.win = win
+  table.insert(lines, string.format("  ⏱ Time:    %.3fs", summary.time / 1000))
+  table.insert(lines, "")
 
-  api.nvim_win_set_buf(win, buf)
+  -- Show failures if any
+  if summary.failed > 0 then
+    table.insert(
+      lines,
+      "────────────────────────────────────────────────────────────"
+    )
+    table.insert(lines, "FAILURES:")
+    table.insert(
+      lines,
+      "────────────────────────────────────────────────────────────"
+    )
+    table.insert(lines, "")
 
-  P.set_keys()
+    for i, failure in ipairs(summary.failures) do
+      table.insert(lines, string.format("✗ Test #%d:", i))
+      table.insert(lines, string.format("  Class:  %s", failure.class))
+      table.insert(lines, string.format("  Method: %s", failure.method))
+      table.insert(lines, "")
+      table.insert(lines, "  Error Message:")
 
+      -- Wrap error message
+      if failure.message then
+        for msg_line in failure.message:gmatch("[^\r\n]+") do
+          table.insert(lines, "    " .. msg_line)
+        end
+      end
+
+      table.insert(lines, "")
+
+      -- Stack trace
+      if failure.stackTrace then
+        table.insert(lines, "  Stack Trace:")
+        for trace_line in failure.stackTrace:gmatch("[^\r\n]+") do
+          table.insert(lines, "    " .. trace_line)
+        end
+        table.insert(lines, "")
+      end
+
+      if i < #summary.failures then
+        table.insert(
+          lines,
+          "  ─────────────────────────────────────────────────"
+        )
+        table.insert(lines, "")
+      end
+    end
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, "Press 'q' to close | Press 'j' to jump to first failure")
+
+  return lines
+end
+
+---Create or reuse result buffer
+---@return integer Buffer number
+H.get_or_create_buf = function()
+  if result_buf and api.nvim_buf_is_valid(result_buf) then
+    return result_buf
+  end
+
+  result_buf = api.nvim_create_buf(false, true)
+  vim.bo[result_buf].buftype = "nofile"
+  vim.bo[result_buf].filetype = "sf_test_results"
+  vim.bo[result_buf].bufhidden = "wipe"
+
+  return result_buf
+end
+
+---Open result window
+---@param buf integer Buffer to display
+---@return integer Window number
+H.open_window = function(buf)
+  -- Get editor dimensions
+  local width = api.nvim_get_option("columns")
+  local height = api.nvim_get_option("lines")
+
+  -- Calculate window size (80% of screen)
+  local win_width = math.min(100, math.floor(width * 0.8))
+  local win_height = math.min(30, math.floor(height * 0.8))
+
+  -- Center the window
+  local row = math.floor((height - win_height) / 2)
+  local col = math.floor((width - win_width) / 2)
+
+  local opts = {
+    relative = "editor",
+    width = win_width,
+    height = win_height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    title = " SF Test Results ",
+    title_pos = "center",
+  }
+
+  result_win = api.nvim_open_win(buf, true, opts)
+
+  -- Set window options
+  vim.wo[result_win].wrap = false
+  vim.wo[result_win].cursorline = true
+
+  return result_win
+end
+
+---Set up keymaps for the result window
+---@param buf integer Buffer number
+---@param summary table Test summary with failure info
+H.setup_keymaps = function(buf, summary)
+  local opts = { buffer = buf, noremap = true, silent = true }
+
+  -- Close window
+  vim.keymap.set("n", "q", function()
+    if result_win and api.nvim_win_is_valid(result_win) then
+      api.nvim_win_close(result_win, true)
+    end
+  end, opts)
+
+  vim.keymap.set("n", "<Esc>", function()
+    if result_win and api.nvim_win_is_valid(result_win) then
+      api.nvim_win_close(result_win, true)
+    end
+  end, opts)
+
+  -- Jump to first failure
+  vim.keymap.set("n", "j", function()
+    if #summary.failures > 0 then
+      local failure = summary.failures[1]
+      -- Close the result window
+      if result_win and api.nvim_win_is_valid(result_win) then
+        api.nvim_win_close(result_win, true)
+      end
+
+      -- Try to open the test class file
+      local class_path = U.get_apex_folder_path() .. failure.class .. ".cls"
+      if U.file_readable(class_path) then
+        vim.cmd("edit " .. class_path)
+
+        -- Try to find the test method and jump to it
+        local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+        for line_num, line in ipairs(lines) do
+          if
+            line:match("testmethod%s+" .. failure.method)
+            or line:match("void%s+" .. failure.method)
+            or line:match(failure.method .. "%s*%(")
+          then
+            vim.api.nvim_win_set_cursor(0, { line_num, 0 })
+            vim.cmd("normal! zz")
+            break
+          end
+        end
+      else
+        U.show_warn("Could not find test class: " .. failure.class)
+      end
+    end
+  end, opts)
+end
+
+---Display test results in a floating window
+---@param test_result_path string Path to the test result JSON file
+M.show_results = function(test_result_path)
+  -- Read and parse the test result JSON
+  local test_result = U.read_file_json_to_tbl("test_result.json", U.get_plugin_folder_path())
+
+  if not test_result then
+    return U.show_err("Could not read test results from: " .. test_result_path)
+  end
+
+  -- Parse the results
+  local summary = H.parse_test_result(test_result)
+
+  if summary.total == 0 then
+    return U.show_warn("No test results found")
+  end
+
+  -- Format into display lines
+  local lines = H.format_results(summary)
+
+  -- Get or create buffer
+  local buf = H.get_or_create_buf()
+
+  -- Set the content
   vim.bo[buf].modifiable = true
-  P.display()
+  api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
+
+  -- Open window
+  H.open_window(buf)
+
+  -- Setup keymaps
+  H.setup_keymaps(buf, summary)
+
+  -- Apply highlights
+  H.apply_highlights(buf, summary)
+
+  -- Show notification
+  if summary.failed == 0 then
+    U.show(string.format("✓ All %d tests passed!", summary.total))
+  else
+    U.show_err(string.format("✗ %d of %d tests failed", summary.failed, summary.total))
+  end
 end
 
-P.set_keys = function()
-  vim.keymap.set("n", "x", function()
-    P.toggle()
-  end, { buffer = true, noremap = true })
+---Apply syntax highlighting to the results buffer
+---@param buf integer Buffer number
+---@param summary table Test summary
+H.apply_highlights = function(buf, summary)
+  local ns = api.nvim_create_namespace("sf_test_results")
 
-  local create_cmd = function(tbl)
-    local cmd_builder = B:new():cmd("apex"):act("run test"):addParams(tbl)
+  -- Clear existing highlights
+  api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 
-    local test_params = ""
-    for _, test in ipairs(P.selected_tests) do
-      test_params = test_params .. " -t " .. test
+  local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
+
+  for i, line in ipairs(lines) do
+    local line_num = i - 1
+
+    -- Header box
+    if line:match("^[╔╚]") or line:match("^║") then
+      api.nvim_buf_add_highlight(buf, ns, "Comment", line_num, 0, -1)
     end
 
-    local cmd = cmd_builder:addParamStr(test_params):build()
-
-    return cmd
-  end
-
-  vim.keymap.set("n", "cc", function()
-    if vim.tbl_isempty(P.selected_tests) then
-      return U.show_err("No test is selected.")
+    -- Success/failure status
+    if line:match("ALL TESTS PASSED") then
+      api.nvim_buf_add_highlight(buf, ns, "diffAdded", line_num, 0, -1)
+    elseif line:match("TESTS FAILED") then
+      api.nvim_buf_add_highlight(buf, ns, "diffRemoved", line_num, 0, -1)
     end
 
-    local cmd = create_cmd({ ["-w"] = vim.g.sf.sf_wait_time, ["-r"] = "human" })
-
-    P.close()
-    T.run(cmd)
-    U.last_tests = cmd
-    P.selected_tests = {}
-  end, { buffer = true, noremap = true })
-
-  vim.keymap.set("n", "CC", function()
-    if vim.tbl_isempty(P.selected_tests) then
-      return U.show_err("No test is selected.")
+    -- Stats
+    if line:match("✓ Passed") then
+      api.nvim_buf_add_highlight(buf, ns, "diffAdded", line_num, 0, -1)
+    elseif line:match("✗ Failed") then
+      api.nvim_buf_add_highlight(buf, ns, "diffRemoved", line_num, 0, -1)
+    elseif line:match("⊘ Skipped") then
+      api.nvim_buf_add_highlight(buf, ns, "Comment", line_num, 0, -1)
     end
 
-    local cmd = create_cmd({ ["-w"] = vim.g.sf.sf_wait_time, ["-r"] = "human", ["-c"] = "" })
+    -- Failure headers
+    if line:match("^✗ Test #%d+:") then
+      api.nvim_buf_add_highlight(buf, ns, "ErrorMsg", line_num, 0, -1)
+    end
 
-    P.close()
-    T.run(cmd, H.save_test_coverage_locally)
-    U.last_tests = cmd
-    P.selected_tests = {}
-  end, { buffer = true, noremap = true })
-end
+    -- Section headers
+    if line:match("Error Message:") or line:match("Stack Trace:") then
+      api.nvim_buf_add_highlight(buf, ns, "Title", line_num, 0, -1)
+    end
 
-P.display = function()
-  api.nvim_set_current_win(P.win)
-  local names = {}
-  table.insert(names, '** "x": toggle tests; "cc": run tests; "CC": run tests with code coverage.')
-
-  for _, test in ipairs(P.tests) do
-    local class_test = string.format("%s.%s", P.class, test)
-    if vim.tbl_contains(P.selected_tests, class_test) then
-      table.insert(names, "[x] " .. test)
-    else
-      table.insert(names, "[ ] " .. test)
+    -- Dividers
+    if line:match("^──") or line:match("^  ──") then
+      api.nvim_buf_add_highlight(buf, ns, "Comment", line_num, 0, -1)
     end
   end
-  api.nvim_buf_set_lines(P.buf, 0, 100, false, names)
 end
 
-P.use_existing_or_create_buf = function()
-  if P.buf and api.nvim_buf_is_loaded(P.buf) then
-    return P.buf
-  end
-
-  local buf = api.nvim_create_buf(false, false)
-  vim.bo[buf].buftype = buftype
-  vim.bo[buf].filetype = filetype
-
-  return buf
-end
-
-P.use_existing_or_create_win = function()
-  local win_hight = P.test_num + 2
-
-  if P.win and api.nvim_win_is_valid(P.win) then
-    api.nvim_set_current_win(P.win)
-    api.nvim_win_set_height(P.win, win_hight)
-    return P.win
-  end
-
-  api.nvim_command(win_hight .. "split")
-
-  return api.nvim_get_current_win()
-end
-
-P.toggle = function()
-  if vim.bo[0].filetype ~= filetype then
-    return U.show_err("file-type must be: " .. filetype)
-  end
-
-  vim.bo[0].modifiable = true
-
-  local r, _ = unpack(vim.api.nvim_win_get_cursor(0))
-  if r == 1 then -- 1st row is title
-    return
-  end
-
-  local row_index = r - 1
-
-  local curr_value = api.nvim_buf_get_text(0, row_index, 1, row_index, 2, {})
-
-  local name = P.tests[row_index]
-  local class_test = string.format("%s.%s", P.class, name)
-  local index = U.list_find(P.selected_tests, class_test)
-
-  if curr_value[1] == "x" then
-    if index ~= nil then
-      table.remove(P.selected_tests, index)
-    end
-    api.nvim_buf_set_text(0, row_index, 1, row_index, 2, { " " })
-  elseif curr_value[1] == " " then
-    if index == nil then
-      table.insert(P.selected_tests, class_test)
-    end
-    api.nvim_buf_set_text(0, row_index, 1, row_index, 2, { "x" })
-  end
-
-  U.show("Selected: " .. vim.tbl_count(P.selected_tests))
-
-  vim.bo[0].modifiable = false
-end
-
----@param param_str string
----@return nil
-P.build_tests_cmd = function(param_str)
-  return t
-  --   local cmd = string.format('sf apex run test%s %s', t, param_str)
-  --   return cmd
-end
-
-P.close = function()
-  if P.win and api.nvim_win_is_valid(P.win) then
-    api.nvim_win_close(P.win, false)
-  end
-end
-
-return Test
-
+return M
