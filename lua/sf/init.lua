@@ -180,6 +180,11 @@ Sf.create_trigger = Metadata.create_trigger
 --- Open a top-split window to display the Apex tests in the current file.
 Sf.open_test_select = Test.open
 
+Sf.run_current_test_enhanced = Test.run_current_test_enhanced
+
+--- Run all tests in file with enhanced output viewer
+Sf.run_all_tests_in_this_file_enhanced = Test.run_all_tests_in_this_file_enhanced
+
 --- Run the Apex test under the cursor.
 --- It uses Treesitter to determine @IsTest method.
 Sf.run_current_test = Test.run_current_test
