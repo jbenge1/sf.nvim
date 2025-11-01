@@ -139,7 +139,7 @@ H.format_results = function(summary)
   end
 
   table.insert(lines, "")
-  table.insert(lines, "Press 'q' to close | Press 'j' to jump to first failure")
+  table.insert(lines, "Press 'q' to close | Press 'j'/'k' to cycle through failures")
 
   return lines
 end
@@ -201,6 +201,7 @@ end
 ---@param summary table Test summary with failure info
 H.setup_keymaps = function(buf, summary)
   local opts = { buffer = buf, noremap = true, silent = true }
+  local current_failure_index = 1
 
   -- Close window
   vim.keymap.set("n", "q", function()
@@ -215,37 +216,68 @@ H.setup_keymaps = function(buf, summary)
     end
   end, opts)
 
-  -- Jump to first failure
+  -- Jump to failures - cycles through all with repeated 'j' presses
   vim.keymap.set("n", "j", function()
-    if #summary.failures > 0 then
-      local failure = summary.failures[1]
-      -- Close the result window
-      if result_win and api.nvim_win_is_valid(result_win) then
-        api.nvim_win_close(result_win, true)
-      end
-
-      -- Try to open the test class file
-      local class_path = U.get_apex_folder_path() .. failure.class .. ".cls"
-      if U.file_readable(class_path) then
-        vim.cmd("edit " .. class_path)
-
-        -- Try to find the test method and jump to it
-        local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-        for line_num, line in ipairs(lines) do
-          if
-            line:match("testmethod%s+" .. failure.method)
-            or line:match("void%s+" .. failure.method)
-            or line:match(failure.method .. "%s*%(")
-          then
-            vim.api.nvim_win_set_cursor(0, { line_num, 0 })
-            vim.cmd("normal! zz")
-            break
-          end
-        end
-      else
-        U.show_warn("Could not find test class: " .. failure.class)
-      end
+    if #summary.failures == 0 then
+      return
     end
+
+    local failure = summary.failures[current_failure_index]
+
+    -- Close the result window
+    if result_win and api.nvim_win_is_valid(result_win) then
+      api.nvim_win_close(result_win, true)
+    end
+
+    -- Construct the path to the test class using get_default_dir_path
+    local class_path = U.get_default_dir_path() .. "classes/" .. failure.class .. ".cls"
+
+    if U.file_readable(class_path) then
+      vim.cmd("edit " .. class_path)
+
+      -- Try to find the test method and jump to it
+      local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+      for line_num, line in ipairs(lines) do
+        if
+          line:match("testmethod%s+" .. failure.method)
+          or line:match("void%s+" .. failure.method)
+          or line:match(failure.method .. "%s*%(")
+        then
+          vim.api.nvim_win_set_cursor(0, { line_num, 0 })
+          vim.cmd("normal! zz")
+          break
+        end
+      end
+
+      -- Show which failure we're on
+      if #summary.failures > 1 then
+        U.show(string.format("Failure %d of %d", current_failure_index, #summary.failures))
+      end
+
+      -- Cycle to next failure for next 'j' press
+      current_failure_index = current_failure_index + 1
+      if current_failure_index > #summary.failures then
+        current_failure_index = 1
+      end
+    else
+      U.show_warn("Could not find test class: " .. failure.class .. " at path: " .. class_path)
+    end
+  end, opts)
+
+  -- Jump backwards through failures
+  vim.keymap.set("n", "k", function()
+    if #summary.failures == 0 then
+      return
+    end
+
+    -- Move backwards
+    current_failure_index = current_failure_index - 2
+    if current_failure_index < 1 then
+      current_failure_index = #summary.failures
+    end
+
+    -- Trigger the jump (which will increment by 1)
+    vim.api.nvim_feedkeys("j", "n", false)
   end, opts)
 end
 
