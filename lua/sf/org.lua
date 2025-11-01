@@ -159,9 +159,19 @@ H.authorize_an_org = function(name, instance_url)
   end
 
   local cmd = cmd_builder:build()
-  local msg = "Opening browser to authenticate org: " .. name
-  local err_msg = "Authentication failed for: " .. name
-  U.job_call(cmd, msg, err_msg)
+
+  -- Show notification then run in terminal so user can see the SF CLI output
+  U.show("Opening browser for: " .. name .. " - Complete authentication in browser")
+
+  -- Import Term module
+  local T = require("sf.term")
+
+  -- Run in terminal with callback to fetch org list after completion
+  T.run(cmd, function()
+    U.show("✓ Authentication complete for: " .. name)
+    -- Refresh the org list after successful auth
+    require("sf.org").fetch_org_list()
+  end)
 end
 
 H.continue_auth_with_alias = function(instance_url)
