@@ -167,7 +167,6 @@ Test.run_current_test_enhanced = function()
       ["-r"] = "human",
       ["-w"] = vim.g.sf.sf_wait_time,
       ["-c"] = "",
-      ["--json"] = "",
     })
     :build()
 
@@ -190,7 +189,6 @@ Test.run_all_tests_in_this_file_enhanced = function()
       ["-r"] = "human",
       ["-w"] = vim.g.sf.sf_wait_time,
       ["-c"] = "",
-      ["--json"] = "",
     })
     :build()
 
