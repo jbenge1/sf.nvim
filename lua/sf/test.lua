@@ -268,6 +268,7 @@ H.show_enhanced_results = function(self, cmd, exit_code)
 
   local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
   local id = H.extract_test_run_id(lines)
+
   if id == nil then
     return U.show_warn("Could not extract test run ID from results")
   end
@@ -278,16 +279,19 @@ H.show_enhanced_results = function(self, cmd, exit_code)
 
   get_results_cmd = get_results_cmd .. " > " .. U.get_plugin_folder_path() .. file_name
 
-  -- Get the test results and then show the viewer
-  U.silent_job_call(get_results_cmd, nil, "Failed to fetch test results", function()
-    -- Close the terminal before showing the popup
-    T.toggle()
+  -- Use jobstart directly so callback runs even when tests fail (non-zero exit code)
+  vim.fn.jobstart(get_results_cmd, {
+    on_exit = function(_, code)
+      -- Always show results, even if command exits non-zero (which happens on test failures)
+      -- Close the terminal before showing the popup
+      T.toggle()
 
-    -- Small delay to ensure file is written and terminal closes
-    vim.defer_fn(function()
-      V.show_results(U.get_plugin_folder_path() .. file_name)
-    end, 150)
-  end)
+      -- Small delay to ensure file is written and terminal closes
+      vim.defer_fn(function()
+        V.show_results(U.get_plugin_folder_path() .. file_name)
+      end, 150)
+    end,
+  })
 end
 
 -- prompt below
