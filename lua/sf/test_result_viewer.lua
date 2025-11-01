@@ -3,7 +3,6 @@ local B = require("sf.sub.cmd_builder")
 local TS = require("sf.ts")
 local U = require("sf.util")
 local S = require("sf.sub.test_sign")
-local V = require("sf.sub.test_result_viewer")
 
 local H = {}
 local P = {}
@@ -147,57 +146,6 @@ Test.run_local_tests = function()
   T.run(cmd)
 end
 
----Run current test with enhanced output viewer
-Test.run_current_test_enhanced = function()
-  local ok_class, test_class_name = pcall(H.validateInTestClass)
-  if not ok_class then
-    return
-  end
-
-  local ok_method, test_name = pcall(H.validateInTestMethod)
-  if not ok_method then
-    return
-  end
-
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-t"] = test_class_name .. "." .. test_name,
-      ["-r"] = "human",
-      ["-w"] = vim.g.sf.sf_wait_time,
-      ["-c"] = "",
-      ["--json"] = "",
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd, H.show_enhanced_results)
-end
-
----Run all tests in file with enhanced output viewer
-Test.run_all_tests_in_this_file_enhanced = function()
-  local ok_class, test_class_name = pcall(H.validateInTestClass)
-  if not ok_class then
-    return
-  end
-
-  local cmd = B:new()
-    :cmd("apex")
-    :act("run test")
-    :addParams({
-      ["-n"] = test_class_name,
-      ["-r"] = "human",
-      ["-w"] = vim.g.sf.sf_wait_time,
-      ["-c"] = "",
-      ["--json"] = "",
-    })
-    :build()
-
-  U.last_tests = cmd
-  T.run(cmd, H.show_enhanced_results)
-end
-
 Test.run_all_jests = function()
   T.run("npm run test:unit:coverage")
 end
@@ -259,37 +207,6 @@ H.save_test_coverage_locally = function(self, cmd, exit_code)
   cmd = cmd .. " > " .. U.get_plugin_folder_path() .. file_name
 
   U.silent_job_call(cmd, "Code coverage saved.", "Code coverage save failed! " .. cmd, S.invalidate_cache_and_try_place)
-end
-
----Show enhanced test results after test run completes
----@param self table Terminal instance
----@param cmd string Command that was run
----@param exit_code number Exit code of the command
-H.show_enhanced_results = function(self, cmd, exit_code)
-  U.create_plugin_folder_if_not_exist()
-
-  local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
-  local id = H.extract_test_run_id(lines)
-  if id == nil then
-    return U.show_warn("Could not extract test run ID from results")
-  end
-
-  local file_name = "test_result.json"
-  local get_results_cmd =
-    B:new():cmd("apex"):act("get test"):addParams("-i", id):addParams("-c"):addParams("--json"):build()
-
-  get_results_cmd = get_results_cmd .. " > " .. U.get_plugin_folder_path() .. file_name
-
-  -- Get the test results and then show the viewer
-  U.silent_job_call(get_results_cmd, nil, "Failed to fetch test results", function()
-    -- Close the terminal before showing the popup
-    T.toggle()
-
-    -- Small delay to ensure file is written and terminal closes
-    vim.defer_fn(function()
-      V.show_results(U.get_plugin_folder_path() .. file_name)
-    end, 150)
-  end)
 end
 
 -- prompt below
@@ -480,3 +397,4 @@ P.close = function()
 end
 
 return Test
+
