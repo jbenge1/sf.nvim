@@ -87,7 +87,7 @@ Sf.go_to_sf_root = Term.go_to_sf_root
 Sf.run = Term.run
 
 -- From Org module ==========================================================
-
+Sf.auth_org = Org.auth_org
 --- Run "sf org list" command under the hood and stores the org list.
 --- If a target_org is found, the value is saved into "require('sf.util').target_org", an internal variable.
 Sf.fetch_org_list = Org.fetch_org_list
